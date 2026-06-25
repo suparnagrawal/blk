@@ -50,13 +50,13 @@ export default function Graph({ nodes, edges, mapping, activeTxs = [] }) {
   }, [width, height, simulation]);
 
   useEffect(() => {
-    if (!nodes.length || !edges.length || width === 0) return;
+    if (!nodes.length || !edges.length) return;
 
     // Reset coordinates if missing (e.g. initial load)
     nodes.forEach(n => {
       if (n.x === undefined) {
-        n.x = width / 2 + (Math.random() - 0.5) * 100;
-        n.y = height / 2 + (Math.random() - 0.5) * 100;
+        n.x = (width || 1000) / 2 + (Math.random() - 0.5) * 100;
+        n.y = (height || 800) / 2 + (Math.random() - 0.5) * 100;
       }
     });
 
@@ -78,7 +78,11 @@ export default function Graph({ nodes, edges, mapping, activeTxs = [] }) {
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'absolute', inset: 0 }}>
-      {width > 0 && height > 0 && (
+      {(!nodes.length || width === 0) ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', color: 'var(--accent-cyan)' }}>
+          <h3>Booting Network Simulation...</h3>
+        </div>
+      ) : (
         <svg width={width} height={height} style={{ display: 'block' }}>
           <g>
             {edges.map((d, i) => {
