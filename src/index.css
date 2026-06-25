@@ -444,3 +444,104 @@ input[type=range]::-webkit-slider-runnable-track {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
   width: max-content;
 }
+
+.floating-box {
+  position: absolute;
+  background-color: rgba(17, 24, 39, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 16px;
+  color: var(--text-main);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 40;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+.demo-results-box {
+  top: 80px;
+  left: 24px;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 4px 24px rgba(6, 182, 212, 0.2);
+  min-width: 280px;
+}
+
+.floating-legend-box {
+  top: 24px;
+  right: 24px;
+  min-width: 200px;
+}
+
+.narrative-banner-box {
+  position: absolute;
+  bottom: 120px;
+  right: 24px;
+  max-width: 300px;
+  padding: 12px;
+  background: rgba(6, 182, 212, 0.15);
+  border: 1px solid var(--accent-cyan);
+  border-radius: 12px;
+  z-index: 40;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+@media (max-width: 768px) {
+  .floating-controls-bar {
+    flex-direction: column;
+    width: 95%;
+    gap: 16px;
+    bottom: 12px;
+    padding: 12px;
+  }
+  
+  .floating-controls-bar .control-group {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .graph-caption {
+    width: 90%;
+    min-width: unset;
+    bottom: 220px;
+    padding: 12px;
+    font-size: 0.875rem;
+  }
+  
+  .graph-caption > div {
+    flex-direction: column;
+    gap: 8px !important;
+  }
+  
+  .demo-results-box {
+    top: 60px;
+    left: 12px;
+    min-width: unset;
+    width: 45%;
+    padding: 12px;
+    font-size: 0.8rem;
+  }
+  
+  .floating-legend-box {
+    top: 60px;
+    right: 12px;
+    min-width: unset;
+    width: 45%;
+    padding: 12px;
+  }
+
+  .narrative-banner-box {
+    bottom: unset;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: unset;
+    text-align: center;
+  }
+  
+  .epoch-badge {
+    display: none; /* Hide epoch badge on mobile since demo box says epoch */
+  }
+}

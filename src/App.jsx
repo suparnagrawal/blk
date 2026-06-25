@@ -48,23 +48,7 @@ export default function App() {
 
         {/* Floating Demo Results Box */}
         {sim.demoResults && (
-          <div style={{
-            position: 'absolute',
-            top: '80px', // Below the epoch badge
-            left: '24px',
-            backgroundColor: 'rgba(17, 24, 39, 0.95)',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid var(--accent-cyan)',
-            borderRadius: '12px',
-            padding: '16px',
-            color: 'var(--text-main)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-            zIndex: 40,
-            boxShadow: '0 4px 24px rgba(6, 182, 212, 0.2)',
-            minWidth: '280px'
-          }}>
+          <div className="floating-box demo-results-box">
             <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-main)', fontWeight: 'bold' }}>Demo Results</h3>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -199,23 +183,7 @@ export default function App() {
       </main>
 
       {/* Floating Legend */}
-      <div className="floating-legend" style={{
-        position: 'absolute',
-        top: '24px',
-        right: '24px',
-        backgroundColor: 'rgba(17, 24, 39, 0.95)',
-        backdropFilter: 'blur(12px)',
-        border: '1px solid var(--border-light)',
-        borderRadius: '12px',
-        padding: '16px',
-        color: 'var(--text-main)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px',
-        zIndex: 40,
-        boxShadow: '0 4px 24px rgba(0, 0, 0, 0.5)',
-        minWidth: '200px'
-      }}>
+      <div className="floating-box floating-legend-box">
         <h3 style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-muted)' }}>Simulation Legend</h3>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -248,18 +216,7 @@ export default function App() {
       </div>
       
       {/* Narrative Banner floating near bottom */}
-      <div style={{
-        position: 'absolute',
-        bottom: '120px',
-        right: '24px',
-        maxWidth: '300px',
-        padding: '12px',
-        background: 'rgba(6, 182, 212, 0.15)',
-        border: '1px solid var(--accent-cyan)',
-        borderRadius: '12px',
-        zIndex: 40,
-        boxShadow: '0 4px 24px rgba(0, 0, 0, 0.5)',
-      }}>
+      <div className="narrative-banner-box">
         <h2 style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-main)', margin: 0, lineHeight: 1.4 }}>
           {globalNarrative}
         </h2>
