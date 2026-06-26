@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Activity, Zap, Play, Clock, Layers, RotateCcw } from 'lucide-react';
+import { Activity, Zap, Play, Clock, Layers, RotateCcw, Info, X } from 'lucide-react';
 import Graph from './components/Graph';
 import { useSimulator } from './hooks/useSimulator';
 import './index.css';
@@ -17,6 +17,8 @@ const SHARD_COLORS = [
 
 export default function App() {
   const [globalNarrative, setGlobalNarrative] = useState("Initializing...");
+  const [showPqVisualizer, setShowPqVisualizer] = useState(true);
+  const [showPqInfo, setShowPqInfo] = useState(false);
   
   const mainViewRef = useRef(null);
 
@@ -323,6 +325,93 @@ export default function App() {
           </div>
         </div>
       </div>
+      
+      {/* Priority Queue Visualizer */}
+      {sim.algorithm === 'opt2' && sim.pqVisualState && showPqVisualizer && (
+        <div className="floating-box pq-visualizer-box" style={{ top: '200px', right: '24px', width: '300px', zIndex: 45 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+               <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-main)', fontWeight: 'bold' }}>Priority Queue</h3>
+               <button className="btn" style={{ padding: '2px', background: 'transparent', border: 'none', cursor: 'pointer' }} onClick={() => setShowPqInfo(true)} title="How it works">
+                  <Info size={16} color="var(--accent-cyan)" />
+               </button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+               <div style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                 Tabu Sleeping: {sim.pqVisualState.tabuCount}
+               </div>
+               <button className="btn" style={{ padding: '2px', background: 'transparent', border: 'none', cursor: 'pointer' }} onClick={() => setShowPqVisualizer(false)}>
+                  <X size={16} color="var(--text-muted)" />
+               </button>
+            </div>
+          </div>
+          
+          {/* Annealing Thermometer */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              <span>Simulated Annealing Temp</span>
+              <span>{Math.round((sim.pqVisualState.steps / 15) * 100)}%</span>
+            </div>
+            <div style={{ width: '100%', height: '6px', background: 'var(--bg-card)', borderRadius: '3px', overflow: 'hidden' }}>
+               <div style={{ 
+                  height: '100%', 
+                  width: `${(sim.pqVisualState.steps / 15) * 100}%`,
+                  background: sim.pqVisualState.steps > 10 ? 'var(--accent-red)' : 'var(--accent-yellow)',
+                  transition: 'width 0.1s linear, background-color 0.3s ease'
+               }} />
+            </div>
+          </div>
+          
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '4px' }}>
+            Top Congested Nodes (Live)
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '250px', overflowY: 'hidden' }}>
+            {sim.pqVisualState.topNodes.map((node, i) => (
+              <div key={node.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', padding: '4px', background: i === 0 ? 'rgba(245, 158, 11, 0.15)' : 'transparent', borderRadius: '4px' }}>
+                 <span style={{ color: i === 0 ? 'var(--accent-yellow)' : 'var(--text-main)' }}>Node {node.id}</span>
+                 <span style={{ fontFamily: 'var(--font-mono)', color: '#fb923c' }}>{node.weight} cross</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {/* PQ Info Diagram */}
+      {showPqInfo && (
+        <div className="floating-box" style={{ top: '200px', right: '340px', width: '400px', zIndex: 46 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-main)', fontWeight: 'bold' }}>Destination-Aware Matchmaking</h3>
+            <button className="btn" style={{ padding: '2px', background: 'transparent', border: 'none', cursor: 'pointer' }} onClick={() => setShowPqInfo(false)}><X size={16} color="var(--text-muted)"/></button>
+          </div>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
+            When a bottleneck node is popped, the algorithm mathematically determines its "preferred destination shard". It then explicitly cross-references the Priority Queue to find <em>other</em> highly congested nodes residing in that exact destination shard for a perfect swap.
+          </div>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '16px', borderRadius: '8px' }}>
+             <div style={{ border: '1px dashed var(--accent-yellow)', padding: '8px', borderRadius: '8px', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--accent-yellow)', marginBottom: '4px' }}>MaxHeap PQ</div>
+                <div style={{ background: 'var(--accent-red)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', marginBottom: '4px' }}>Node U (150)</div>
+                <div style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>Node V (140)</div>
+             </div>
+
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, alignItems: 'center' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--accent-cyan)' }}>→ Target Shard →</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--accent-green)' }}>← Match Found ←</div>
+             </div>
+
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ border: '1px solid var(--border-light)', padding: '8px', borderRadius: '8px', textAlign: 'center' }}>
+                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Shard A</div>
+                   <div style={{ background: 'var(--accent-red)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>Node U</div>
+                </div>
+                <div style={{ border: '1px solid var(--border-light)', padding: '8px', borderRadius: '8px', textAlign: 'center' }}>
+                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Shard B</div>
+                   <div style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>Node V</div>
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
       
       {/* Narrative Banner floating near bottom */}
       <div className="narrative-banner-box">

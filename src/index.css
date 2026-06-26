@@ -542,12 +542,8 @@ input[type=range]::-webkit-slider-runnable-track {
     margin: 4px 0;
   }
   
-  .floating-legend-box {
-    top: 60px;
-    right: 12px;
-    min-width: unset;
-    width: 45%;
-    padding: 12px;
+  .floating-legend-box, .pq-visualizer-box {
+    display: none;
   }
 
   .narrative-banner-box {

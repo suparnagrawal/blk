@@ -44,6 +44,7 @@ export function useSimulator({
   const [algorithm, setAlgorithm] = useState('original');
   const [algorithmStats, setAlgorithmStats] = useState(null);
   const [comparisonStats, setComparisonStats] = useState(null);
+  const [pqVisualState, setPqVisualState] = useState(null);
   const partitionStartTimeRef = useRef(0);
 
   // Initialize graph
@@ -206,6 +207,14 @@ export function useSimulator({
             currentCross: traffic.percentage,
             reduction: prev.initialCross - traffic.percentage
           }));
+          
+          if (algorithm === 'opt2' && searchStateRef.current?.pq) {
+            setPqVisualState({
+              topNodes: [...searchStateRef.current.pq.data].sort((a,b) => b.weight - a.weight).slice(0, 10),
+              tabuCount: searchStateRef.current.tabuNodes.size,
+              steps: searchStateRef.current.stepsSinceImprovement
+            });
+          }
         }, partitionSpeed);
       }
     }
@@ -215,6 +224,7 @@ export function useSimulator({
   const runPartitioning = () => {
     swapCountRef.current = 0;
     setPartitionProgress(0);
+    setPqVisualState(null);
     
     // Initialize search state for Tabu-like local minima escape
     const currentTraffic = GetCrossShardTraffic(edges, mapping).crossWeight;
@@ -229,8 +239,8 @@ export function useSimulator({
     setTxStats(prev => ({ ...prev, throughput: 0, avgLatency: 0 }));
   };
 
-  const runComparisonBenchmark = () => {
-    if (isPartitioning || isExecuting || isAutoRunning) return;
+  const runComparisonBenchmark = (force = false) => {
+    if ((isPartitioning || isExecuting || isAutoRunning) && !force) return;
     
     const initialTraffic = GetCrossShardTraffic(edges, mapping);
     const algorithms = [
@@ -478,6 +488,8 @@ export function useSimulator({
           
           setTimeout(() => {
             setNarrative("Step 3: Partitioning the network to minimize cross-shard traffic...");
+            setAlgorithm('original');
+            runComparisonBenchmark(true);
             setDemoPhase('partitioning');
             runPartitioning();
           }, 2000);
@@ -516,6 +528,6 @@ export function useSimulator({
     setIsAutoRunning, autoRunRef, demoResults,
     algorithm, setAlgorithm, algorithmStats, setAlgorithmStats,
     runComparisonBenchmark, comparisonStats, setComparisonStats,
-    resetSimulation
+    resetSimulation, pqVisualState
   };
 }
