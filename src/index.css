@@ -468,6 +468,20 @@ input[type=range]::-webkit-slider-runnable-track {
   min-width: 280px;
 }
 
+.compare-results-box {
+  top: 80px;
+  left: 24px;
+  border-color: var(--accent-purple);
+  box-shadow: 0 4px 24px rgba(139, 92, 246, 0.2);
+  min-width: 450px;
+}
+
+.divider-vertical {
+  width: 1px;
+  height: 32px;
+  background: var(--border-light);
+}
+
 .floating-legend-box {
   top: 24px;
   right: 24px;
@@ -514,13 +528,18 @@ input[type=range]::-webkit-slider-runnable-track {
     gap: 8px !important;
   }
   
-  .demo-results-box {
+  .demo-results-box, .compare-results-box {
     top: 60px;
     left: 12px;
-    min-width: unset;
-    width: 45%;
-    padding: 12px;
-    font-size: 0.8rem;
+    right: 12px;
+    width: auto;
+    min-width: 0;
+  }
+
+  .divider-vertical {
+    width: 100%;
+    height: 1px;
+    margin: 4px 0;
   }
   
   .floating-legend-box {

@@ -134,7 +134,7 @@ export default function App() {
 
         {/* Floating Compare All Box */}
         {sim.comparisonStats && !sim.isAutoRunning && (
-          <div className="floating-box demo-results-box" style={{ top: '80px', minWidth: '450px', zIndex: 50 }}>
+          <div className="floating-box compare-results-box" style={{ zIndex: 50 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-main)', fontWeight: 'bold' }}>Algorithm Comparison</h3>
               <button className="btn" style={{ padding: '2px 8px', fontSize: '0.85rem' }} onClick={() => sim.setComparisonStats(null)}>✕</button>
@@ -243,7 +243,7 @@ export default function App() {
               <Play size={18} />
             </button>
             
-            <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }}></div>
+            <div className="divider-vertical"></div>
 
             <button 
               className="btn"
@@ -256,7 +256,7 @@ export default function App() {
             </button>
           </div>
 
-          <div style={{ width: '1px', height: '32px', background: 'var(--border-light)' }}></div>
+          <div className="divider-vertical"></div>
 
           <div className="control-group">
             <div className="slider-container" style={{ width: '120px' }}>
