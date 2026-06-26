@@ -46,6 +46,8 @@ export function useSimulator({
   const [comparisonStats, setComparisonStats] = useState(null);
   const [pqVisualState, setPqVisualState] = useState(null);
   const partitionStartTimeRef = useRef(0);
+  const cpuTimeRef = useRef(0);
+  const [prePartitionMapping, setPrePartitionMapping] = useState(null);
 
   // Initialize graph
   useEffect(() => {
@@ -115,6 +117,7 @@ export function useSimulator({
           tabuNodes: new Set()
         };
 
+        const cpuStart = performance.now();
         while (!done) {
           const result = PerformPartitionStep(nodes, edges, currentMap, numShards, localSearchState, algorithm);
           if (result.isDone) done = true;
@@ -123,6 +126,7 @@ export function useSimulator({
             localSwaps++;
           }
         }
+        cpuTimeRef.current += (performance.now() - cpuStart);
         
         currentMap = localSearchState.bestMapping; // ensure we use the best map found
         currentMap = RebalanceShards(nodes, currentMap, numShards);
@@ -132,15 +136,18 @@ export function useSimulator({
         
         const traffic = GetCrossShardTraffic(edges, currentMap);
         const endTime = performance.now();
-        setAlgorithmStats({
-          algorithm: algorithm === 'original' ? 'Original (Brute Force)' : algorithm === 'opt1' ? 'Optimization 1 (Adj List)' : 'Optimization 2 (PQ)',
-          complexity: algorithm === 'original' ? 'O(SV²E)' : algorithm === 'opt1' ? 'O(SVE)' : 'O(SE log V)',
-          runtimeMs: Math.round(endTime - partitionStartTimeRef.current),
-          swaps: localSwaps,
-          initialCross: partitionStats.initialCross,
-          finalCross: traffic.percentage,
-          reduction: partitionStats.initialCross - traffic.percentage
-        });
+        if (!autoRunRef.current) {
+          setAlgorithmStats({
+            algorithm: algorithm === 'original' ? 'Original (Brute Force)' : algorithm === 'opt1' ? 'Optimization 1 (Adj List)' : 'Optimization 2 (PQ)',
+            complexity: algorithm === 'original' ? 'O(SV²E)' : algorithm === 'opt1' ? 'O(SVE)' : 'O(SE log V)',
+            runtimeMs: Math.round(endTime - partitionStartTimeRef.current),
+            cpuRuntimeMs: Math.max(1, Math.round(cpuTimeRef.current)),
+            swaps: localSwaps,
+            initialCross: partitionStats.initialCross,
+            finalCross: traffic.percentage,
+            reduction: partitionStats.initialCross - traffic.percentage
+          });
+        }
 
         setPartitionStats(prev => ({
           ...prev,
@@ -159,26 +166,39 @@ export function useSimulator({
         // Step-by-step
         timer = setTimeout(() => {
           const MAX_SWAPS = 200;
+          const cpuStart = performance.now();
           const result = PerformPartitionStep(nodes, edges, mapping, numShards, searchStateRef.current, algorithm);
+          cpuTimeRef.current += (performance.now() - cpuStart);
+          
           if (result.isDone || swapCountRef.current >= MAX_SWAPS) {
             // Revert mapping to the best one found before rebalancing
             const finalMap = RebalanceShards(nodes, searchStateRef.current.bestMapping, numShards);
             setMapping({...finalMap});
             setIsPartitioning(false);
             setPartitionProgress(100);
-            searchStateRef.current = null;
             
             const endTime = performance.now();
             const finalTraffic = GetCrossShardTraffic(edges, finalMap);
-            setAlgorithmStats({
-              algorithm: algorithm === 'original' ? 'Original (Brute Force)' : algorithm === 'opt1' ? 'Optimization 1 (Adj List)' : 'Optimization 2 (PQ)',
-              complexity: algorithm === 'original' ? 'O(SV²E)' : algorithm === 'opt1' ? 'O(SVE)' : 'O(SE log V)',
-              runtimeMs: Math.round(endTime - partitionStartTimeRef.current),
-              swaps: swapCountRef.current,
-              initialCross: partitionStats.initialCross,
-              finalCross: finalTraffic.percentage,
-              reduction: partitionStats.initialCross - finalTraffic.percentage
-            });
+            
+            setPartitionStats(prev => ({
+              ...prev,
+              currentCross: finalTraffic.percentage,
+              reduction: prev.initialCross - finalTraffic.percentage
+            }));
+            
+            searchStateRef.current = null;
+            if (!autoRunRef.current) {
+              setAlgorithmStats({
+                algorithm: algorithm === 'original' ? 'Original (Brute Force)' : algorithm === 'opt1' ? 'Optimization 1 (Adj List)' : 'Optimization 2 (PQ)',
+                complexity: algorithm === 'original' ? 'O(SV²E)' : algorithm === 'opt1' ? 'O(SVE)' : 'O(SE log V)',
+                runtimeMs: Math.round(endTime - partitionStartTimeRef.current),
+                cpuRuntimeMs: Math.max(1, Math.round(cpuTimeRef.current)),
+                swaps: swapCountRef.current,
+                initialCross: partitionStats.initialCross,
+                finalCross: finalTraffic.percentage,
+                reduction: partitionStats.initialCross - finalTraffic.percentage
+              });
+            }
 
             if (isAutoRunMaster) {
               if (autoRunRef.current) {
@@ -199,14 +219,14 @@ export function useSimulator({
                 setNarrative(`Partitioning — swap ${swapCountRef.current}...`);
               }
             }
+            
+            const traffic = GetCrossShardTraffic(edges, result.newMapping);
+            setPartitionStats(prev => ({
+              ...prev,
+              currentCross: traffic.percentage,
+              reduction: prev.initialCross - traffic.percentage
+            }));
           }
-          
-          const traffic = GetCrossShardTraffic(edges, result.isDone ? RebalanceShards(nodes, searchStateRef.current.bestMapping, numShards) : result.newMapping);
-          setPartitionStats(prev => ({
-            ...prev,
-            currentCross: traffic.percentage,
-            reduction: prev.initialCross - traffic.percentage
-          }));
           
           if (algorithm === 'opt2' && searchStateRef.current?.pq) {
             setPqVisualState({
@@ -225,6 +245,8 @@ export function useSimulator({
     swapCountRef.current = 0;
     setPartitionProgress(0);
     setPqVisualState(null);
+    cpuTimeRef.current = 0;
+    setPrePartitionMapping({ ...mapping });
     
     // Initialize search state for Tabu-like local minima escape
     const currentTraffic = GetCrossShardTraffic(edges, mapping).crossWeight;
@@ -239,10 +261,22 @@ export function useSimulator({
     setTxStats(prev => ({ ...prev, throughput: 0, avgLatency: 0 }));
   };
 
-  const runComparisonBenchmark = (force = false) => {
+  const calculateTheoreticalTPS = (txList, mapObj, shards) => {
+    const { intra, cross } = ClassifyTransactions(txList, mapObj);
+    const total = txList.length;
+    if (total === 0) return 0;
+    const maxIntraTpsPerShard = 10000;
+    const maxTotalIntraTps = maxIntraTpsPerShard * shards;
+    const crossShardCostMultiplier = 50;
+    const totalWorkloadCost = intra.length * 1 + cross.length * crossShardCostMultiplier;
+    return Math.floor((total / totalWorkloadCost) * maxTotalIntraTps);
+  };
+
+  const runComparisonBenchmark = (force = false, isDemo = false) => {
     if ((isPartitioning || isExecuting || isAutoRunning) && !force) return;
     
     const initialTraffic = GetCrossShardTraffic(edges, mapping);
+    const initialTps = calculateTheoreticalTPS(txs, mapping, numShards);
     const algorithms = [
       { id: 'original', name: 'Original (Brute Force)', complexity: 'O(SV²E)' },
       { id: 'opt1', name: 'Opt 1 (Adj List)', complexity: 'O(SVE)' },
@@ -274,17 +308,21 @@ export function useSimulator({
       const endTime = performance.now();
       
       const finalTraffic = GetCrossShardTraffic(edges, finalMap);
+      const finalTps = calculateTheoreticalTPS(txs, finalMap, numShards);
       return {
         ...alg,
         runtimeMs: Math.round(endTime - startTime),
         swaps: localSwaps,
-        finalCross: finalTraffic.percentage
+        finalCross: finalTraffic.percentage,
+        finalTps
       };
     });
 
     setComparisonStats({
       initialCross: initialTraffic.percentage,
-      results
+      initialTps,
+      results,
+      isDemo
     });
     setNarrative("Comparison Benchmark Complete! View results on the left.");
   };
@@ -429,6 +467,7 @@ export function useSimulator({
       currentCross: finalTraffic.percentage,
       reduction: 0
     });
+    setPrePartitionMapping(null);
     
     setExecProgress(0);
     setExecLogs([]);
@@ -436,6 +475,20 @@ export function useSimulator({
 
     if (isAutoRunMaster && !autoRunRef.current) {
       setNarrative(`Advanced to Epoch ${currentEpoch}. New real-world transactions have arrived based on the updated topology.`);
+    }
+  };
+
+  const revertPartitioning = () => {
+    if (prePartitionMapping) {
+      setMapping({ ...prePartitionMapping });
+      const traffic = GetCrossShardTraffic(edges, prePartitionMapping);
+      setPartitionStats({
+        initialCross: traffic.percentage,
+        currentCross: traffic.percentage,
+        reduction: 0
+      });
+      setAlgorithmStats(null);
+      setPrePartitionMapping(null);
     }
   };
 
@@ -447,6 +500,9 @@ export function useSimulator({
     setExecLogs([]);
     setDemoResults(null);
     setDemoPhase('idle');
+    setAlgorithmStats(null);
+    setComparisonStats(null);
+    setPrePartitionMapping(null);
     
     const { nodes: n, edges: e, txs: t } = BuildAccountGraph(numNodes, minTxs, maxTxs);
     setNodes([...n]);
@@ -489,7 +545,7 @@ export function useSimulator({
           setTimeout(() => {
             setNarrative("Step 3: Partitioning the network to minimize cross-shard traffic...");
             setAlgorithm('original');
-            runComparisonBenchmark(true);
+            runComparisonBenchmark(true, true);
             setDemoPhase('partitioning');
             runPartitioning();
           }, 2000);
@@ -528,6 +584,6 @@ export function useSimulator({
     setIsAutoRunning, autoRunRef, demoResults,
     algorithm, setAlgorithm, algorithmStats, setAlgorithmStats,
     runComparisonBenchmark, comparisonStats, setComparisonStats,
-    resetSimulation, pqVisualState
+    resetSimulation, pqVisualState, revertPartitioning, prePartitionMapping
   };
 }

@@ -48,44 +48,7 @@ export default function App() {
           Epoch {sim.epoch}
         </div>
 
-        {/* Floating Demo Results Box */}
-        {sim.demoResults && (
-          <div className="floating-box demo-results-box">
-            <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-main)', fontWeight: 'bold' }}>Demo Results</h3>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Before Optimization (Epoch 1)</span>
-              {sim.demoResults.before ? (
-                <div style={{ fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '2px', background: 'rgba(255,255,255,0.05)', padding: '8px', borderRadius: '8px' }}>
-                  <span>Cross-Shard: <span style={{ color: '#fb923c' }}>{Math.floor((sim.demoResults.before.cross / (sim.demoResults.before.cross + sim.demoResults.before.intra)) * 100)}%</span></span>
-                  <span>Throughput: <span style={{ fontWeight: 'bold' }}>{sim.demoResults.before.throughput} TPS</span></span>
-                  <span>Avg Latency: {sim.demoResults.before.avgLatency}ms</span>
-                </div>
-              ) : (
-                <span style={{ fontSize: '0.9rem', fontStyle: 'italic', color: 'var(--text-muted)' }}>Executing baseline...</span>
-              )}
-            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>After Optimization (Epoch 2)</span>
-              {sim.demoResults.after ? (
-                <div style={{ fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '2px', background: 'rgba(6, 182, 212, 0.1)', border: '1px solid var(--accent-cyan)', padding: '8px', borderRadius: '8px' }}>
-                  <span>Cross-Shard: <span style={{ color: '#4ade80' }}>{Math.floor((sim.demoResults.after.cross / (sim.demoResults.after.cross + sim.demoResults.after.intra)) * 100)}%</span></span>
-                  <span>Throughput: <span style={{ color: 'var(--accent-green)', fontWeight: 'bold' }}>{sim.demoResults.after.throughput} TPS</span></span>
-                  <span>Avg Latency: {sim.demoResults.after.avgLatency}ms</span>
-                </div>
-              ) : (
-                <span style={{ fontSize: '0.9rem', fontStyle: 'italic', color: 'var(--text-muted)' }}>Awaiting partitioning...</span>
-              )}
-            </div>
-
-            {sim.demoResults.before && sim.demoResults.after && (
-              <div style={{ marginTop: '8px', textAlign: 'center', color: 'var(--accent-green)', fontWeight: 'bold', fontSize: '0.95rem' }}>
-                Net Gain: {(sim.demoResults.after.throughput / sim.demoResults.before.throughput).toFixed(1)}x TPS!
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Floating Caption */}
         {(sim.isPartitioning || sim.isExecuting || sim.txStats.throughput > 0) && (
@@ -112,9 +75,10 @@ export default function App() {
           </div>
         )}
 
+
         {/* Floating Benchmarking Results Box */}
         {sim.algorithmStats && !sim.isAutoRunning && !sim.comparisonStats && (
-          <div className="floating-box demo-results-box" style={{ top: sim.demoResults ? '320px' : '80px' }}>
+          <div className="floating-box demo-results-box" style={{ top: '80px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-main)', fontWeight: 'bold' }}>Partitioning Benchmark</h3>
               <button className="btn" style={{ padding: '2px 6px', fontSize: '0.75rem' }} onClick={() => sim.setAlgorithmStats(null)}>✕</button>
@@ -124,13 +88,22 @@ export default function App() {
               <span>Algorithm: <span style={{ color: 'var(--accent-cyan)' }}>{sim.algorithmStats.algorithm}</span></span>
               <span>Theoretical: <span style={{ fontFamily: 'var(--font-mono)' }}>{sim.algorithmStats.complexity}</span></span>
               <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
-              <span>Runtime: <span style={{ color: '#fb923c', fontWeight: 'bold' }}>{sim.algorithmStats.runtimeMs} ms</span></span>
+              <span>CPU Runtime: <span style={{ color: '#fb923c', fontWeight: 'bold' }}>{sim.algorithmStats.cpuRuntimeMs} ms</span></span>
+              <span>Total Runtime (incl. Animation): <span style={{ color: 'var(--text-muted)' }}>{sim.algorithmStats.runtimeMs} ms</span></span>
               <span>Swaps Evaluated: {sim.algorithmStats.swaps}</span>
               <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
               <span>Initial Cross: {sim.algorithmStats.initialCross.toFixed(1)}%</span>
               <span>Final Cross: <span style={{ color: '#4ade80', fontWeight: 'bold' }}>{sim.algorithmStats.finalCross.toFixed(1)}%</span></span>
               <span>Reduction: {sim.algorithmStats.reduction.toFixed(1)}%</span>
             </div>
+
+            <button 
+              className="btn" 
+              style={{ marginTop: '12px', width: '100%', padding: '6px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.5)', cursor: 'pointer', borderRadius: '4px' }}
+              onClick={sim.revertPartitioning}
+            >
+              Undo Partitioning
+            </button>
           </div>
         )}
 
@@ -141,10 +114,7 @@ export default function App() {
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-main)', fontWeight: 'bold' }}>Algorithm Comparison</h3>
               <button className="btn" style={{ padding: '2px 8px', fontSize: '0.85rem' }} onClick={() => sim.setComparisonStats(null)}>✕</button>
             </div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
-              Initial Cross-Shard Traffic: <strong>{sim.comparisonStats.initialCross.toFixed(1)}%</strong>
-            </div>
-            
+
             <table style={{ width: '100%', fontSize: '0.85rem', textAlign: 'left', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.2)' }}>
@@ -153,18 +123,33 @@ export default function App() {
                   <th style={{ padding: '8px 4px' }}>Runtime</th>
                   <th style={{ padding: '8px 4px' }}>Swaps</th>
                   <th style={{ padding: '8px 4px' }}>Final Cross</th>
+                  {sim.comparisonStats.isDemo && <th style={{ padding: '8px 4px' }}>Final TPS</th>}
+                  {sim.comparisonStats.isDemo && <th style={{ padding: '8px 4px' }}>Gain</th>}
                 </tr>
               </thead>
               <tbody>
-                {sim.comparisonStats.results.map((res, i) => (
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.2)', backgroundColor: 'rgba(255,255,255,0.05)' }}>
+                   <td style={{ padding: '8px 4px', color: 'var(--text-main)', fontWeight: 'bold' }}>Initial Network</td>
+                   <td style={{ padding: '8px 4px', color: 'var(--text-muted)' }}>-</td>
+                   <td style={{ padding: '8px 4px', color: 'var(--text-muted)' }}>-</td>
+                   <td style={{ padding: '8px 4px', color: 'var(--text-muted)' }}>0</td>
+                   <td style={{ padding: '8px 4px', color: '#fb923c', fontWeight: 'bold' }}>{sim.comparisonStats.initialCross.toFixed(1)}%</td>
+                   {sim.comparisonStats.isDemo && <td style={{ padding: '8px 4px', color: 'var(--text-main)', fontWeight: 'bold' }}>{sim.comparisonStats.initialTps?.toLocaleString()}</td>}
+                   {sim.comparisonStats.isDemo && <td style={{ padding: '8px 4px', color: 'var(--text-muted)' }}>-</td>}
+                </tr>
+                {sim.comparisonStats.results.map((res, i) => {
+                  const gain = sim.comparisonStats.initialTps ? ((res.finalTps - sim.comparisonStats.initialTps) / sim.comparisonStats.initialTps) * 100 : 0;
+                  return (
                   <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <td style={{ padding: '8px 4px', color: 'var(--accent-cyan)' }}>{res.name}</td>
                     <td style={{ padding: '8px 4px', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{res.complexity}</td>
                     <td style={{ padding: '8px 4px', color: '#fb923c', fontWeight: 'bold' }}>{res.runtimeMs} ms</td>
                     <td style={{ padding: '8px 4px' }}>{res.swaps}</td>
                     <td style={{ padding: '8px 4px', color: '#4ade80', fontWeight: 'bold' }}>{res.finalCross.toFixed(1)}%</td>
+                    {sim.comparisonStats.isDemo && <td style={{ padding: '8px 4px', color: 'var(--accent-green)', fontWeight: 'bold' }}>{res.finalTps?.toLocaleString()}</td>}
+                    {sim.comparisonStats.isDemo && <td style={{ padding: '8px 4px', color: 'var(--accent-green)', fontWeight: 'bold' }}>+{gain.toFixed(0)}%</td>}
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>

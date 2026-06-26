@@ -153,6 +153,22 @@ graph LR
 
 ---
 
+## ⚙️ Simulator Features & Architecture
+
+The simulator goes beyond standard visualizations by exposing an advanced benchmarking suite to validate the algorithms mathematically.
+
+### 1. Pure CPU Profiling vs. Animation Time
+When running a single algorithm step-by-step, the simulator explicitly separates **CPU Runtime** (the raw mathematical execution of the optimization logic) from **Total Runtime** (the time elapsed including the artificial UI animation delays). This provides complete transparency, proving that the underlying math executes in a few milliseconds even while the React UI visualizes it over several seconds.
+
+### 2. Topology Snapshotting (Undo System)
+A core feature of the simulator is the ability to compare algorithms head-to-head on the *exact same graph topology*. Before any single partition algorithm runs, the application takes a deep clone snapshot of the current node-to-shard mapping. The **Undo Partitioning** button instantly rolls the graph back to this exact state, allowing you to test different optimizations back-to-back without regenerating or randomizing the network edges.
+
+### 3. Mathematically Preserved Shard Balance
+Many real-world algorithms forcefully balance shards at the end of their execution, which carelessly destroys optimized cross-shard pathways. This simulator takes a mathematically strict approach:
+- The initial network generation uses a strict **Round-Robin** distribution, guaranteeing perfectly balanced shards from epoch 0.
+- All three partitioning algorithms strictly execute 1-to-1 Node **Swaps**. 
+- Because shards start perfectly balanced and nodes only ever trade places, the shard populations remain mathematically identical throughout the entire optimization process. This entirely eliminates the need for destructive post-execution rebalancing!
+
 ## 🚀 Running the Demo Locally
 
 1. Install dependencies:

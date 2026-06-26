@@ -68,9 +68,10 @@ export function BuildAccountGraph(numAccounts, minTxs, maxTxs) {
 
 export function InitializePartition(nodes, numShards) {
   const mapping = {};
-  // Random assignment
-  nodes.forEach(node => {
-    mapping[node.id] = Math.floor(Math.random() * numShards);
+  // Round-robin assignment guarantees perfectly balanced shards from the start.
+  // Since our algorithms only perform 1:1 node swaps, the shards will remain perfectly balanced forever.
+  nodes.forEach((node, idx) => {
+    mapping[node.id] = idx % numShards;
   });
   return mapping;
 }
@@ -519,34 +520,11 @@ export function PerformPartitionStep(nodes, edges, mapping, numShards, searchSta
 }
 
 export function RebalanceShards(nodes, mapping, numShards) {
-  // Final rebalancing step: relocate low-degree nodes to even out shard sizes
-  const shardCounts = Array.from({ length: numShards }, () => 0);
-  nodes.forEach(n => shardCounts[mapping[n.id]]++);
-
-  const targetSize = Math.floor(nodes.length / numShards);
-  const newMapping = { ...mapping };
-  
-  // Sort nodes by degree ascending
-  const sortedNodes = [...nodes].sort((a, b) => a.degree - b.degree);
-
-  // Very naive rebalancing: move low degree nodes from overloaded shards to underloaded ones
-  for (let s = 0; s < numShards; s++) {
-    while (shardCounts[s] > targetSize + 1) {
-      // Find a low degree node in shard s
-      const nodeToMove = sortedNodes.find(n => newMapping[n.id] === s);
-      if (!nodeToMove) break;
-      
-      // Find an underloaded shard
-      const targetShard = shardCounts.findIndex(c => c < targetSize);
-      if (targetShard === -1) break;
-
-      newMapping[nodeToMove.id] = targetShard;
-      shardCounts[s]--;
-      shardCounts[targetShard]++;
-    }
-  }
-
-  return newMapping;
+  // Since InitializePartition guarantees perfectly balanced shards, 
+  // and our algorithms only perform 1:1 node swaps, the shards are 
+  // mathematically guaranteed to remain perfectly balanced forever.
+  // Forced rebalancing is no longer necessary and would only ruin the optimized cross-shard traffic.
+  return mapping;
 }
 
 export function ClassifyTransactions(txs, mapping) {
