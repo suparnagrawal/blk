@@ -40,6 +40,12 @@ export function useSimulator({
   const [demoResults, setDemoResults] = useState(null);
   const [demoPhase, setDemoPhase] = useState('idle'); // 'idle' | 'awaiting_baseline' | 'baseline_starting' | 'partitioning' | 'epoch_adv' | 'awaiting_optimized' | 'optimized_starting'
 
+  // Algorithm Benchmarking
+  const [algorithm, setAlgorithm] = useState('original');
+  const [algorithmStats, setAlgorithmStats] = useState(null);
+  const [comparisonStats, setComparisonStats] = useState(null);
+  const partitionStartTimeRef = useRef(0);
+
   // Initialize graph
   useEffect(() => {
     const { nodes: n, edges: e, txs: t } = BuildAccountGraph(numNodes, minTxs, maxTxs);
@@ -109,7 +115,7 @@ export function useSimulator({
         };
 
         while (!done) {
-          const result = PerformPartitionStep(nodes, edges, currentMap, numShards, localSearchState);
+          const result = PerformPartitionStep(nodes, edges, currentMap, numShards, localSearchState, algorithm);
           if (result.isDone) done = true;
           else {
             currentMap = result.newMapping;
@@ -124,6 +130,17 @@ export function useSimulator({
         searchStateRef.current = null;
         
         const traffic = GetCrossShardTraffic(edges, currentMap);
+        const endTime = performance.now();
+        setAlgorithmStats({
+          algorithm: algorithm === 'original' ? 'Original (Brute Force)' : algorithm === 'opt1' ? 'Optimization 1 (Adj List)' : 'Optimization 2 (PQ)',
+          complexity: algorithm === 'original' ? 'O(SV²E)' : algorithm === 'opt1' ? 'O(SVE)' : 'O(SE log V)',
+          runtimeMs: Math.round(endTime - partitionStartTimeRef.current),
+          swaps: localSwaps,
+          initialCross: partitionStats.initialCross,
+          finalCross: traffic.percentage,
+          reduction: partitionStats.initialCross - traffic.percentage
+        });
+
         setPartitionStats(prev => ({
           ...prev,
           currentCross: traffic.percentage,
@@ -134,18 +151,14 @@ export function useSimulator({
           if (autoRunRef.current) {
             setNarrative(`Step 2 Complete: Ran ${localSwaps} swaps. Preparing for execution...`);
           } else {
-            setNarrative(`Partitioning Complete. Advancing epoch in 1.5s...`);
+            setNarrative(`Partitioning Complete.`);
           }
-        }
-        
-        if (!autoRunRef.current) {
-          setTimeout(() => advanceEpochs(1), 1500);
         }
       } else {
         // Step-by-step
         timer = setTimeout(() => {
-          const MAX_SWAPS = 50;
-          const result = PerformPartitionStep(nodes, edges, mapping, numShards, searchStateRef.current);
+          const MAX_SWAPS = 200;
+          const result = PerformPartitionStep(nodes, edges, mapping, numShards, searchStateRef.current, algorithm);
           if (result.isDone || swapCountRef.current >= MAX_SWAPS) {
             // Revert mapping to the best one found before rebalancing
             const finalMap = RebalanceShards(nodes, searchStateRef.current.bestMapping, numShards);
@@ -154,16 +167,24 @@ export function useSimulator({
             setPartitionProgress(100);
             searchStateRef.current = null;
             
+            const endTime = performance.now();
+            const finalTraffic = GetCrossShardTraffic(edges, finalMap);
+            setAlgorithmStats({
+              algorithm: algorithm === 'original' ? 'Original (Brute Force)' : algorithm === 'opt1' ? 'Optimization 1 (Adj List)' : 'Optimization 2 (PQ)',
+              complexity: algorithm === 'original' ? 'O(SV²E)' : algorithm === 'opt1' ? 'O(SVE)' : 'O(SE log V)',
+              runtimeMs: Math.round(endTime - partitionStartTimeRef.current),
+              swaps: swapCountRef.current,
+              initialCross: partitionStats.initialCross,
+              finalCross: finalTraffic.percentage,
+              reduction: partitionStats.initialCross - finalTraffic.percentage
+            });
+
             if (isAutoRunMaster) {
               if (autoRunRef.current) {
                 setNarrative(`Step 2 Complete: Partitioning optimized for Epoch ${epoch}. Preparing for execution...`);
               } else {
-                setNarrative(`Partitioning optimized for Epoch ${epoch}. Advancing to Epoch ${epoch + 1} to simulate the arrival of new real-world transactions...`);
+                setNarrative(`Partitioning optimized for Epoch ${epoch}.`);
               }
-            }
-
-            if (!autoRunRef.current) {
-              setTimeout(() => advanceEpochs(1), 2500); // Wait 2.5s to read the long text
             }
           } else {
             swapCountRef.current += 1;
@@ -206,6 +227,56 @@ export function useSimulator({
     
     setIsPartitioning(true);
     setTxStats(prev => ({ ...prev, throughput: 0, avgLatency: 0 }));
+  };
+
+  const runComparisonBenchmark = () => {
+    if (isPartitioning || isExecuting || isAutoRunning) return;
+    
+    const initialTraffic = GetCrossShardTraffic(edges, mapping);
+    const algorithms = [
+      { id: 'original', name: 'Original (Brute Force)', complexity: 'O(SV²E)' },
+      { id: 'opt1', name: 'Opt 1 (Adj List)', complexity: 'O(SVE)' },
+      { id: 'opt2', name: 'Opt 2 (PQ Incremental)', complexity: 'O(SE log V)' }
+    ];
+
+    const results = algorithms.map(alg => {
+      let currentMap = { ...mapping };
+      let done = false;
+      let localSwaps = 0;
+      
+      const localSearchState = {
+        bestMapping: { ...currentMap },
+        bestCrossWeight: initialTraffic.crossWeight,
+        stepsSinceImprovement: 0,
+        tabuNodes: new Set()
+      };
+
+      const startTime = performance.now();
+      while (!done) {
+        const result = PerformPartitionStep(nodes, edges, currentMap, numShards, localSearchState, alg.id);
+        if (result.isDone) done = true;
+        else {
+          currentMap = result.newMapping;
+          localSwaps++;
+        }
+      }
+      const finalMap = RebalanceShards(nodes, localSearchState.bestMapping, numShards);
+      const endTime = performance.now();
+      
+      const finalTraffic = GetCrossShardTraffic(edges, finalMap);
+      return {
+        ...alg,
+        runtimeMs: Math.round(endTime - startTime),
+        swaps: localSwaps,
+        finalCross: finalTraffic.percentage
+      };
+    });
+
+    setComparisonStats({
+      initialCross: initialTraffic.percentage,
+      results
+    });
+    setNarrative("Comparison Benchmark Complete! View results on the left.");
   };
 
   const executeTransactions = (onCompleteCallback) => {
@@ -442,6 +513,9 @@ export function useSimulator({
     isPartitioning, partitionSpeed, setPartitionSpeed, runPartitioning, partitionStats, partitionProgress,
     txStats, isExecuting, execProgress, execLogs, executeTransactions, activeTxs,
     narrative, isAutoRunning, startAutoRunSequence,
-    setIsAutoRunning, autoRunRef, demoResults
+    setIsAutoRunning, autoRunRef, demoResults,
+    algorithm, setAlgorithm, algorithmStats, setAlgorithmStats,
+    runComparisonBenchmark, comparisonStats, setComparisonStats,
+    resetSimulation
   };
 }

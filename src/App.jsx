@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Activity, Zap, Play, Clock } from 'lucide-react';
+import { Activity, Zap, Play, Clock, Layers, RotateCcw } from 'lucide-react';
 import Graph from './components/Graph';
 import { useSimulator } from './hooks/useSimulator';
 import './index.css';
@@ -110,40 +110,149 @@ export default function App() {
           </div>
         )}
 
+        {/* Floating Benchmarking Results Box */}
+        {sim.algorithmStats && !sim.isAutoRunning && !sim.comparisonStats && (
+          <div className="floating-box demo-results-box" style={{ top: sim.demoResults ? '320px' : '80px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-main)', fontWeight: 'bold' }}>Partitioning Benchmark</h3>
+              <button className="btn" style={{ padding: '2px 6px', fontSize: '0.75rem' }} onClick={() => sim.setAlgorithmStats(null)}>✕</button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
+              <span>Algorithm: <span style={{ color: 'var(--accent-cyan)' }}>{sim.algorithmStats.algorithm}</span></span>
+              <span>Theoretical: <span style={{ fontFamily: 'var(--font-mono)' }}>{sim.algorithmStats.complexity}</span></span>
+              <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
+              <span>Runtime: <span style={{ color: '#fb923c', fontWeight: 'bold' }}>{sim.algorithmStats.runtimeMs} ms</span></span>
+              <span>Swaps Evaluated: {sim.algorithmStats.swaps}</span>
+              <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
+              <span>Initial Cross: {sim.algorithmStats.initialCross.toFixed(1)}%</span>
+              <span>Final Cross: <span style={{ color: '#4ade80', fontWeight: 'bold' }}>{sim.algorithmStats.finalCross.toFixed(1)}%</span></span>
+              <span>Reduction: {sim.algorithmStats.reduction.toFixed(1)}%</span>
+            </div>
+          </div>
+        )}
+
+        {/* Floating Compare All Box */}
+        {sim.comparisonStats && !sim.isAutoRunning && (
+          <div className="floating-box demo-results-box" style={{ top: '80px', minWidth: '450px', zIndex: 50 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-main)', fontWeight: 'bold' }}>Algorithm Comparison</h3>
+              <button className="btn" style={{ padding: '2px 8px', fontSize: '0.85rem' }} onClick={() => sim.setComparisonStats(null)}>✕</button>
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+              Initial Cross-Shard Traffic: <strong>{sim.comparisonStats.initialCross.toFixed(1)}%</strong>
+            </div>
+            
+            <table style={{ width: '100%', fontSize: '0.85rem', textAlign: 'left', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.2)' }}>
+                  <th style={{ padding: '8px 4px' }}>Algorithm</th>
+                  <th style={{ padding: '8px 4px' }}>Complexity</th>
+                  <th style={{ padding: '8px 4px' }}>Runtime</th>
+                  <th style={{ padding: '8px 4px' }}>Swaps</th>
+                  <th style={{ padding: '8px 4px' }}>Final Cross</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sim.comparisonStats.results.map((res, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <td style={{ padding: '8px 4px', color: 'var(--accent-cyan)' }}>{res.name}</td>
+                    <td style={{ padding: '8px 4px', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{res.complexity}</td>
+                    <td style={{ padding: '8px 4px', color: '#fb923c', fontWeight: 'bold' }}>{res.runtimeMs} ms</td>
+                    <td style={{ padding: '8px 4px' }}>{res.swaps}</td>
+                    <td style={{ padding: '8px 4px', color: '#4ade80', fontWeight: 'bold' }}>{res.finalCross.toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         {/* Floating Controls Bar */}
         <div className="floating-controls-bar">
           <div className="control-group">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginRight: '16px' }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Partitioning Algorithm</label>
+              <select 
+                value={sim.algorithm}
+                onChange={(e) => sim.setAlgorithm(e.target.value)}
+                disabled={sim.isPartitioning || sim.isExecuting || sim.isAutoRunning}
+                style={{
+                  background: 'rgba(0,0,0,0.5)', 
+                  color: 'var(--text-main)', 
+                  border: '1px solid var(--border-light)', 
+                  borderRadius: '6px', 
+                  padding: '4px 8px',
+                  fontSize: '0.85rem',
+                  outline: 'none'
+                }}
+              >
+                <option value="original">1. Original (Brute Force)</option>
+                <option value="opt1">2. Opt 1 (Adjacency List)</option>
+                <option value="opt2">3. Opt 2 (PQ Incremental)</option>
+              </select>
+            </div>
+
             <button 
               className="btn btn-primary"
               onClick={sim.runPartitioning}
               disabled={sim.isPartitioning || sim.isExecuting || sim.isAutoRunning}
+              title="Run Single Partition Step"
+              style={{ padding: '8px' }}
             >
-              <Activity size={16} /> Run Partitioning
+              <Activity size={18} />
+            </button>
+
+            <button 
+              className="btn"
+              onClick={sim.runComparisonBenchmark}
+              disabled={sim.isPartitioning || sim.isExecuting || sim.isAutoRunning}
+              title="Compare All Algorithms"
+              style={{ background: 'rgba(139, 92, 246, 0.2)', borderColor: '#8b5cf6', color: '#c4b5fd', padding: '8px' }}
+            >
+              <Layers size={18} />
             </button>
             
             <button 
               className="btn"
               onClick={() => sim.executeTransactions()}
               disabled={sim.isPartitioning || sim.isExecuting || sim.isAutoRunning}
+              title="Classify & Execute"
+              style={{ padding: '8px' }}
             >
-              <Zap size={16} /> Classify & Execute
+              <Zap size={18} />
             </button>
 
             <button 
               className="btn"
               onClick={() => sim.advanceEpochs(1)}
               disabled={sim.isPartitioning || sim.isExecuting || sim.isAutoRunning}
+              title="Advance 1 Epoch"
+              style={{ padding: '8px' }}
             >
-              <Clock size={16} /> Advance 1 Epoch
+              <Clock size={18} />
             </button>
             
             <button 
               className={`btn ${sim.isAutoRunning ? 'active' : ''}`}
               onClick={sim.startAutoRunSequence}
               disabled={sim.isAutoRunning || sim.isPartitioning || sim.isExecuting}
-              style={{ borderColor: sim.isAutoRunning ? 'var(--accent-purple)' : undefined }}
+              title="Start Demo"
+              style={{ borderColor: sim.isAutoRunning ? 'var(--accent-purple)' : undefined, padding: '8px' }}
             >
-              <Play size={16} /> Start Demo
+              <Play size={18} />
+            </button>
+            
+            <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }}></div>
+
+            <button 
+              className="btn"
+              onClick={sim.resetSimulation}
+              disabled={sim.isPartitioning || sim.isExecuting || sim.isAutoRunning}
+              title="Reset Network"
+              style={{ padding: '8px', color: '#f87171' }}
+            >
+              <RotateCcw size={18} />
             </button>
           </div>
 

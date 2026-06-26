@@ -132,31 +132,148 @@ function computeSwapGain(nodeA, nodeB, edges, mapping) {
   return currentCost - swappedCost;
 }
 
-export function PerformPartitionStep(nodes, edges, mapping, numShards, searchState) {
-  let bestSwap = null;
-  let maxGain = -Infinity; // Allow finding the "least bad" negative swap
-  
-  const tabu = searchState ? searchState.tabuNodes : new Set();
+// -------------------------------------------------------------
+// Optimizations & Data Structures
+// -------------------------------------------------------------
 
-  // Find the best pairwise swap
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      const u = nodes[i].id;
-      const v = nodes[j].id;
-      
-      if (mapping[u] === mapping[v]) continue;
-      
-      // Prevent reversing recent negative swaps
-      if (tabu.has(u) || tabu.has(v)) continue;
+export function buildAdjacencyList(edges) {
+  const adj = new Map();
+  edges.forEach(e => {
+    const s = typeof e.source === 'object' ? e.source.id : e.source;
+    const t = typeof e.target === 'object' ? e.target.id : e.target;
+    if (!adj.has(s)) adj.set(s, new Map());
+    if (!adj.has(t)) adj.set(t, new Map());
+    
+    adj.get(s).set(t, (adj.get(s).get(t) || 0) + e.weight);
+    adj.get(t).set(s, (adj.get(t).get(s) || 0) + e.weight);
+  });
+  return adj;
+}
 
-      const gain = computeSwapGain(u, v, edges, mapping);
-      if (gain > maxGain) {
-        maxGain = gain;
-        bestSwap = { u, v };
-      }
+export function computeSwapGainOptimized(nodeA, nodeB, mapping, adj) {
+  const shardA = mapping[nodeA];
+  const shardB = mapping[nodeB];
+  if (shardA === shardB) return 0;
+
+  let gain = 0;
+
+  const neighborsA = adj.get(nodeA);
+  if (neighborsA) {
+    for (const [neighbor, weight] of neighborsA.entries()) {
+      const neighborShard = mapping[neighbor];
+      if (neighborShard === shardB) gain += weight;
+      if (neighborShard === shardA) gain -= weight;
     }
   }
 
+  const neighborsB = adj.get(nodeB);
+  if (neighborsB) {
+    for (const [neighbor, weight] of neighborsB.entries()) {
+      const neighborShard = mapping[neighbor];
+      if (neighborShard === shardA) gain += weight;
+      if (neighborShard === shardB) gain -= weight;
+    }
+  }
+
+  // Correction for the edge between A and B
+  if (neighborsA && neighborsA.has(nodeB)) {
+    gain -= 2 * neighborsA.get(nodeB);
+  }
+
+  return gain;
+}
+
+export class MaxHeap {
+  constructor(compareFn) {
+    this.data = [];
+    this.compare = compareFn;
+    this.indexMap = new Map();
+  }
+
+  push(item) {
+    this.data.push(item);
+    this.indexMap.set(item.id, this.data.length - 1);
+    this._bubbleUp(this.data.length - 1);
+  }
+
+  pop() {
+    if (this.data.length === 0) return null;
+    if (this.data.length === 1) {
+      const item = this.data.pop();
+      this.indexMap.delete(item.id);
+      return item;
+    }
+    const top = this.data[0];
+    this.indexMap.delete(top.id);
+    this.data[0] = this.data.pop();
+    this.indexMap.set(this.data[0].id, 0);
+    this._sinkDown(0);
+    return top;
+  }
+
+  update(item) {
+    const idx = this.indexMap.get(item.id);
+    if (idx !== undefined) {
+      this.data[idx] = item;
+      this._bubbleUp(idx);
+      this._sinkDown(idx);
+    } else {
+      this.push(item);
+    }
+  }
+  
+  isEmpty() { return this.data.length === 0; }
+
+  _bubbleUp(idx) {
+    let currentIdx = idx;
+    const item = this.data[currentIdx];
+    while (currentIdx > 0) {
+      const parentIdx = Math.floor((currentIdx - 1) / 2);
+      const parent = this.data[parentIdx];
+      if (this.compare(item, parent) <= 0) break;
+      this.data[parentIdx] = item;
+      this.data[currentIdx] = parent;
+      this.indexMap.set(item.id, parentIdx);
+      this.indexMap.set(parent.id, currentIdx);
+      currentIdx = parentIdx;
+    }
+  }
+
+  _sinkDown(idx) {
+    let currentIdx = idx;
+    const item = this.data[currentIdx];
+    const length = this.data.length;
+    while (true) {
+      const leftIdx = 2 * currentIdx + 1;
+      const rightIdx = 2 * currentIdx + 2;
+      let swapIdx = null;
+
+      if (leftIdx < length) {
+        if (this.compare(this.data[leftIdx], item) > 0) swapIdx = leftIdx;
+      }
+      if (rightIdx < length) {
+        if (this.compare(this.data[rightIdx], swapIdx === null ? item : this.data[leftIdx]) > 0) {
+          swapIdx = rightIdx;
+        }
+      }
+
+      if (swapIdx === null) break;
+
+      const swapItem = this.data[swapIdx];
+      this.data[currentIdx] = swapItem;
+      this.data[swapIdx] = item;
+      this.indexMap.set(swapItem.id, currentIdx);
+      this.indexMap.set(item.id, swapIdx);
+      currentIdx = swapIdx;
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// The Algorithms
+// -------------------------------------------------------------
+
+function processSwapState(nodes, edges, searchState, bestSwap, maxGain, mapping, algorithm = 'original') {
   let isDone = false;
   let newMapping = { ...mapping };
 
@@ -171,34 +288,234 @@ export function PerformPartitionStep(nodes, edges, mapping, numShards, searchSta
         const currentTraffic = GetCrossShardTraffic(edges, newMapping).crossWeight;
         
         if (currentTraffic < searchState.bestCrossWeight) {
-          // Found a new global best!
           searchState.bestCrossWeight = currentTraffic;
           searchState.bestMapping = { ...newMapping };
           searchState.stepsSinceImprovement = 0;
-          searchState.tabuNodes.clear(); // Reset tabu list since we found a new peak
+          searchState.tabuNodes.clear(); 
         } else {
-          // Worse or equal, increment steps
           searchState.stepsSinceImprovement++;
-          // Add to tabu list so we don't immediately swap them back
           searchState.tabuNodes.add(bestSwap.u);
           searchState.tabuNodes.add(bestSwap.v);
         }
         
-        // Give up if we haven't improved in 5 steps
-        if (searchState.stepsSinceImprovement >= 5) {
+        const cutoff = algorithm === 'opt2' ? 15 : 5;
+        if (searchState.stepsSinceImprovement >= cutoff) {
           isDone = true;
-          newMapping = { ...searchState.bestMapping }; // Revert to best
+          newMapping = { ...searchState.bestMapping }; 
         }
       }
     } else {
-      isDone = true; // No search state, and maxGain <= 0
+      isDone = true; 
     }
   } else {
     isDone = true;
-    if (searchState) newMapping = { ...searchState.bestMapping }; // Revert if absolutely stuck
+    if (searchState) newMapping = { ...searchState.bestMapping }; 
   }
 
   return { newMapping, maxGain, isDone, bestSwap };
+}
+
+function partitionOriginal(nodes, edges, mapping, searchState) {
+  let bestSwap = null;
+  let maxGain = -Infinity; 
+  const tabu = searchState ? searchState.tabuNodes : new Set();
+
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const u = nodes[i].id;
+      const v = nodes[j].id;
+      if (mapping[u] === mapping[v]) continue;
+      if (tabu.has(u) || tabu.has(v)) continue;
+
+      const gain = computeSwapGain(u, v, edges, mapping);
+      if (gain > maxGain) {
+        maxGain = gain;
+        bestSwap = { u, v };
+      }
+    }
+  }
+  return processSwapState(nodes, edges, searchState, bestSwap, maxGain, mapping);
+}
+
+function partitionAdjacencyOptimized(nodes, edges, mapping, searchState) {
+  if (searchState && !searchState.adj) searchState.adj = buildAdjacencyList(edges);
+  const adj = searchState ? searchState.adj : buildAdjacencyList(edges);
+
+  let bestSwap = null;
+  let maxGain = -Infinity; 
+  const tabu = searchState ? searchState.tabuNodes : new Set();
+
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const u = nodes[i].id;
+      const v = nodes[j].id;
+      if (mapping[u] === mapping[v]) continue;
+      if (tabu.has(u) || tabu.has(v)) continue;
+
+      const gain = computeSwapGainOptimized(u, v, mapping, adj);
+      if (gain > maxGain) {
+        maxGain = gain;
+        bestSwap = { u, v };
+      }
+    }
+  }
+  return processSwapState(nodes, edges, searchState, bestSwap, maxGain, mapping);
+}
+
+function partitionPriorityOptimized(nodes, edges, mapping, searchState) {
+  if (searchState && !searchState.adj) {
+    searchState.adj = buildAdjacencyList(edges);
+    searchState.crossWeights = new Map();
+    
+    // Initialize cross shard weights
+    for (const node of nodes) {
+      let cw = 0;
+      const neighbors = searchState.adj.get(node.id);
+      if (neighbors) {
+        for (const [neighbor, weight] of neighbors.entries()) {
+          if (mapping[node.id] !== mapping[neighbor]) cw += weight;
+        }
+      }
+      searchState.crossWeights.set(node.id, cw);
+    }
+
+    // Initialize MaxHeap
+    searchState.pq = new MaxHeap((a, b) => a.weight - b.weight);
+    for (const [id, weight] of searchState.crossWeights.entries()) {
+      searchState.pq.push({ id, weight });
+    }
+  }
+
+  const adj = searchState ? searchState.adj : buildAdjacencyList(edges);
+  const tabu = searchState ? searchState.tabuNodes : new Set();
+  
+  let bestSwap = null;
+  let maxGain = -Infinity;
+  
+  if (searchState && searchState.pq) {
+    let attempts = 0;
+    while (!searchState.pq.isEmpty() && attempts < 10) { 
+      attempts++;
+
+      let topNodes = [];
+      for (let k = 0; k < 3; k++) {
+        if (!searchState.pq.isEmpty()) {
+          const node = searchState.pq.pop();
+          if (!tabu.has(node.id)) {
+            topNodes.push(node);
+          }
+        }
+      }
+
+      for (const topNode of topNodes) {
+        const u = topNode.id;
+        
+        let candidates = [];
+        if (adj.has(u)) {
+          candidates = Array.from(adj.get(u).keys()).filter(n => mapping[n] !== mapping[u]);
+          
+          // Calculate preferred destination shard
+          const shardTraffic = new Map();
+          for (const [neighbor, weight] of adj.get(u).entries()) {
+             const targetShard = mapping[neighbor];
+             if (targetShard !== mapping[u]) {
+                shardTraffic.set(targetShard, (shardTraffic.get(targetShard) || 0) + weight);
+             }
+          }
+          
+          let preferredDestination = null;
+          let maxTraffic = 0;
+          for (const [shard, traffic] of shardTraffic.entries()) {
+             if (traffic > maxTraffic) {
+                maxTraffic = traffic;
+                preferredDestination = shard;
+             }
+          }
+          
+          // Destination-Aware Smart Fallback
+          if (preferredDestination !== null) {
+             const pqData = [...searchState.pq.data].sort((a, b) => b.weight - a.weight);
+             let fallback = [];
+             for (const item of pqData) {
+                if (mapping[item.id] === preferredDestination && !tabu.has(item.id)) {
+                   fallback.push(item.id);
+                   if (fallback.length >= 10) break;
+                }
+             }
+             candidates = [...new Set([...candidates, ...fallback])];
+          }
+        }
+        
+        if (candidates.length < 5) {
+           const pqData = [...searchState.pq.data].sort((a, b) => b.weight - a.weight);
+           let fallback = [];
+           for (const item of pqData) {
+              if (mapping[item.id] !== mapping[u] && !tabu.has(item.id)) {
+                 fallback.push(item.id);
+                 if (fallback.length >= 15) break;
+              }
+           }
+           candidates = [...new Set([...candidates, ...fallback])];
+        }
+
+        for (const v of candidates) {
+          if (mapping[u] === mapping[v]) continue;
+          if (tabu.has(v)) continue;
+
+          const gain = computeSwapGainOptimized(u, v, mapping, adj);
+          if (gain > maxGain) {
+            maxGain = gain;
+            bestSwap = { u, v };
+          }
+        }
+      }
+
+      if (maxGain > 0) {
+        for (const topNode of topNodes) {
+          if (bestSwap && topNode.id !== bestSwap.u && topNode.id !== bestSwap.v) {
+            searchState.pq.push(topNode);
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  const result = processSwapState(nodes, edges, searchState, bestSwap, maxGain, mapping, 'opt2');
+
+  // If a swap occurred, update the Priority Queue for affected nodes only
+  if (result.bestSwap && searchState && searchState.pq && !result.isDone) {
+     const { u, v } = result.bestSwap;
+     const newMapping = result.newMapping;
+     
+     const affected = new Set([u, v]);
+     if (adj.has(u)) Array.from(adj.get(u).keys()).forEach(n => affected.add(n));
+     if (adj.has(v)) Array.from(adj.get(v).keys()).forEach(n => affected.add(n));
+
+     for (const id of affected) {
+       let cw = 0;
+       const neighbors = adj.get(id);
+       if (neighbors) {
+         for (const [neighbor, weight] of neighbors.entries()) {
+           if (newMapping[id] !== newMapping[neighbor]) cw += weight;
+         }
+       }
+       searchState.crossWeights.set(id, cw);
+       searchState.pq.update({ id, weight: cw });
+     }
+  }
+
+  return result;
+}
+
+export function PerformPartitionStep(nodes, edges, mapping, numShards, searchState, algorithm = 'original') {
+  if (algorithm === 'opt1') {
+    return partitionAdjacencyOptimized(nodes, edges, mapping, searchState);
+  } else if (algorithm === 'opt2') {
+    return partitionPriorityOptimized(nodes, edges, mapping, searchState);
+  } else {
+    return partitionOriginal(nodes, edges, mapping, searchState);
+  }
 }
 
 export function RebalanceShards(nodes, mapping, numShards) {

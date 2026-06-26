@@ -84,18 +84,72 @@ sequenceDiagram
 
 ---
 
-## ⏱️ Time Complexity Breakdown
+## ⚡ The Evolution of Partitioning Algorithms
 
-Let **$V$** be the number of nodes (accounts), **$E$** be the number of unique transaction edges, and **$T$** be the total number of transactions.
+The simulator features a modular benchmarking engine that allows you to compare three distinct graph partitioning algorithms head-to-head on the exact same topology.
 
-| Phase | Complexity | Description |
-| :--- | :--- | :--- |
-| **Graph Generation** | $\mathcal{O}(V + T)$ | Accounts and highly clustered synthetic transaction flows are generated into a hash map. |
-| **Traffic Calculation** | $\mathcal{O}(E)$ | Iterates through unique edges to calculate total initial vs. cross-shard traffic weight. |
-| **Iterative Swap (Per Step)** | $\mathcal{O}(V^2 \cdot E)$ | Evaluates every possible cross-shard node pair $\mathcal{O}(V^2)$. For each pair, it iterates through edges $\mathcal{O}(E)$ to calculate the exact traffic reduction gain. *(Note: In a production environment, checking only adjacency lists would optimize this to $\mathcal{O}(V \cdot E)$).* |
-| **Total Partition Runtime** | $\mathcal{O}(S \cdot V^2 \cdot E)$ | The loop repeats for $S$ successful swaps until the network converges and no further positive-gain swaps can be found. |
-| **Shard Rebalancing** | $\mathcal{O}(V \log V + V^2)$ | Nodes are sorted by degree to seamlessly pull low-activity nodes from overloaded shards to underloaded shards to maintain size fairness. |
-| **Classification** | $\mathcal{O}(T)$ | Separates transactions into `Intra` vs `Cross` queues via $\mathcal{O}(1)$ shard mapping lookups. |
+### Algorithm 1: Original (Brute Force)
+The baseline method. It guarantees a highly optimized local minimum but is mathematically exhaustive.
+- **Approach:** Evaluates **every possible cross-shard node pair** $\mathcal{O}(V^2)$. For each candidate pair, it scans **all** edges $\mathcal{O}(E)$ in the network to compute the exact net reduction in cross-shard traffic.
+- **Complexity:** $\mathcal{O}(S \cdot V^2 \cdot E)$ (where $S$ is the number of successful swaps)
+
+```mermaid
+graph TD
+    subgraph Shard 1
+        A(Node A)
+        B(Node B)
+    end
+    subgraph Shard 2
+        C(Node C)
+        D(Node D)
+    end
+    A -.Evaluate Swap.-> C
+    A -.Evaluate Swap.-> D
+    B -.Evaluate Swap.-> C
+    B -.Evaluate Swap.-> D
+    style A fill:#ef4444,stroke:#fff,color:#fff
+    style C fill:#ef4444,stroke:#fff,color:#fff
+```
+
+### Algorithm 2: Optimization 1 (Adjacency List)
+A mathematical optimization of the brute force method that yields the exact same deterministic results but exponentially faster.
+- **Approach:** Instead of scanning all edges $\mathcal{O}(E)$ to calculate the gain of swapping $u$ and $v$, it relies on a pre-computed Adjacency List. It strictly computes the delta of the direct neighbors of $u$ and $v$, reducing the gain calculation to $\mathcal{O}(deg(u) + deg(v))$.
+- **Complexity:** $\mathcal{O}(S \cdot V \cdot E)$
+
+### Algorithm 3: Optimization 2 (Priority Queue + Smart Heuristics)
+A blazing fast, state-driven local search algorithm designed for massive scale. Instead of evaluating all pairs, it maintains a **MaxHeap Priority Queue** of the network's most heavily congested nodes.
+
+- **Destination-Aware Matchmaking:** When a bottleneck node is popped from the queue, the algorithm mathematically determines its "preferred destination shard" (the shard it sends the most traffic to). It then explicitly cross-references the Priority Queue to find *other* highly congested nodes residing in that target shard, executing a perfectly matched swap.
+- **Deeper Tabu Tolerance:** Because it computes candidate swaps so quickly, it can afford to execute up to 15 successive *negative gain* swaps (Simulated Annealing / Tabu Search) to intentionally climb out of deep mathematical craters, often finding significantly better global optimums than Brute Force.
+- **Complexity:** $\mathcal{O}(S \cdot E \log V)$
+
+```mermaid
+graph LR
+    subgraph Priority_Queue[MaxHeap Priority Queue]
+        direction TB
+        Top1((Node U<br>Cross-Traffic: 150))
+        Top2((Node V<br>Cross-Traffic: 140))
+        Top3((Node W<br>Cross-Traffic: 110))
+    end
+
+    subgraph Shard_A[Shard A]
+        U(Node U)
+    end
+
+    subgraph Shard_B[Shard B]
+        V(Node V)
+    end
+
+    Top1 -.Popped.-> U
+    U == "Preferred Destination = Shard B" ==> Shard_B
+    Shard_B -. "Finds Top Node in Shard B" .-> Top2
+    Top2 -. Matches .-> V
+    U <== "Perfect Swap" ==> V
+
+    style Top1 fill:#f59e0b,stroke:#fff,color:#fff
+    style U fill:#ef4444,stroke:#fff,color:#fff
+    style V fill:#ef4444,stroke:#fff,color:#fff
+```
 
 ---
 
